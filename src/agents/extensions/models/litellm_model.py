@@ -313,24 +313,6 @@ class LitellmModel(Model):
                 "output_tokens_details": usage.output_tokens_details.model_dump(),
             }
 
-            # A completion truncated before any visible token (finish_reason="length")
-            # is a token- or reasoning-budget exhaustion, not a policy refusal.
-            # Surface it as a model behavior error rather than returning an empty output.
-            provider_specific_fields = getattr(message, "provider_specific_fields", None) or {}
-            if (
-                message is not None
-                and first_choice is not None
-                and getattr(first_choice, "finish_reason", None) == "length"
-                and not message.content
-                and not getattr(message, "refusal", None)
-                and not provider_specific_fields.get("refusal")
-                and not getattr(message, "tool_calls", None)
-            ):
-                raise ModelBehaviorError(
-                    "Chat Completions response terminated with finish_reason='length' "
-                    "but produced no assistant text, tool call, or refusal."
-                )
-
             # Surface content-filter refusals explicitly. Some providers (e.g.
             # Anthropic on Amazon Bedrock) signal a safety block only via
             # ``finish_reason == "content_filter"`` with an empty message and no
@@ -365,6 +347,20 @@ class LitellmModel(Model):
                 if message is not None
                 else []
             )
+
+            # A completion truncated before any output item (finish_reason="length") is a
+            # token- or reasoning-budget exhaustion, not a policy refusal. Let the converter
+            # preserve reasoning-only responses before rejecting a genuinely empty response.
+            if (
+                message is not None
+                and first_choice is not None
+                and getattr(first_choice, "finish_reason", None) == "length"
+                and not items
+            ):
+                raise ModelBehaviorError(
+                    "Chat Completions response terminated with finish_reason='length' "
+                    "but produced no assistant text, tool call, refusal, or reasoning."
+                )
 
             # LiteLLM's Choices omits the logprobs attribute entirely when it was not requested,
             # so access it defensively (mirrors the finish_reason handling above).

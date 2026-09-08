@@ -5,6 +5,7 @@ from openai.types.responses import (
     ResponseFunctionToolCall,
     ResponseOutputMessage,
     ResponseOutputRefusal,
+    ResponseReasoningItem,
 )
 
 from agents.exceptions import ModelBehaviorError
@@ -21,6 +22,7 @@ async def _get_response(
     finish_reason,
     content,
     provider_specific_fields=None,
+    reasoning_content=None,
     tool_calls=None,
     tracing=ModelTracing.DISABLED,
 ):
@@ -31,6 +33,7 @@ async def _get_response(
             role="assistant",
             content=content,
             provider_specific_fields=provider_specific_fields,
+            reasoning_content=reasoning_content,
             tool_calls=tool_calls,
         )
         if finish_reason is None:
@@ -126,6 +129,21 @@ async def test_length_finish_reason_records_usage_before_raising(monkeypatch):
     assert len(generation_spans) == 1
     assert generation_spans[0].span_data.usage is not None
     assert generation_spans[0].span_data.usage["requests"] == 1
+
+
+@pytest.mark.allow_call_model_methods
+@pytest.mark.asyncio
+async def test_length_finish_reason_with_reasoning_only_output_is_preserved(monkeypatch):
+    resp = await _get_response(
+        monkeypatch,
+        finish_reason="length",
+        content=None,
+        reasoning_content="internal reasoning",
+    )
+
+    assert len(resp.output) == 1
+    assert isinstance(resp.output[0], ResponseReasoningItem)
+    assert resp.output[0].summary[0].text == "internal reasoning"
 
 
 @pytest.mark.allow_call_model_methods

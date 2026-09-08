@@ -27,6 +27,7 @@ from openai.types.responses import (
     ResponseFunctionToolCall,
     ResponseOutputMessage,
     ResponseOutputRefusal,
+    ResponseReasoningItem,
 )
 from openai.types.responses.response import IncompleteDetails
 from openai.types.responses.response_created_event import ResponseCreatedEvent
@@ -730,6 +731,28 @@ async def test_any_llm_chat_path_raises_on_truncated_empty_turn(
 
     assert len(spans) == 1
     assert spans[0].span_data.usage["requests"] == 1
+
+
+@pytest.mark.allow_call_model_methods
+@pytest.mark.asyncio
+async def test_any_llm_chat_path_preserves_reasoning_only_truncated_output(monkeypatch) -> None:
+    response = await _get_any_llm_chat_response(
+        monkeypatch,
+        _chat_completion_with_message(
+            ChatCompletionMessage.model_validate(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "reasoning_content": "internal reasoning",
+                }
+            ),
+            "length",
+        ),
+    )
+
+    assert len(response.output) == 1
+    assert isinstance(response.output[0], ResponseReasoningItem)
+    assert response.output[0].summary[0].text == "internal reasoning"
 
 
 @pytest.mark.allow_call_model_methods
